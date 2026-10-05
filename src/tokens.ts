@@ -49,17 +49,3 @@ export function verifyToken<T extends TokenPayload>(token: string, typ?: string)
   if (typ && payload.typ !== typ) throw new Error("Unexpected token type");
   return payload;
 }
-
-const usedJti = new Map<string, number>();
-
-export function consumeJti(jti: string, expSeconds: number): boolean {
-  const now = Date.now();
-  for (const [key, exp] of usedJti) if (exp <= now) usedJti.delete(key);
-  if (usedJti.has(jti)) return false;
-  usedJti.set(jti, expSeconds * 1000);
-  return true;
-}
-
-export function resetJtiForTests(): void {
-  usedJti.clear();
-}

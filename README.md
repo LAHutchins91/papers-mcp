@@ -50,16 +50,17 @@ When `STRIPE_SECRET_KEY`, `STRIPE_PRICE_MONTHLY`, and `STRIPE_PRICE_YEARLY` are 
 
 ## Storage
 
-Paper search is stateless. The only persisted record is a subscription snapshot, behind one store:
+Paper search is stateless. Subscription snapshots and used authorization-code ids share one store:
 
 | `STORAGE_BACKEND` | Behavior |
 | --- | --- |
-| `memory` (default) | Process-local map. Fine for tests and a single Node process. |
-| `file` | One JSON object at `STORAGE_PATH` (default `data/accounts.json`), keyed by account id. For a single Docker host. |
+| `memory` (default) | Process-local. Fine for tests and a single Node process. A second process can still accept a code this process already used. |
+| `file` | One JSON document at `STORAGE_PATH` (default `data/accounts.json`). For a single Docker host. |
+| `blob` | One private Vercel Blob at `STORAGE_BLOB_PATH` (default `papers/accounts.json`). Use this on Vercel so a code cannot be replayed across instances. Requires `BLOB_READ_WRITE_TOKEN`. |
 
-Each value is `{ userId, stripeCustomerId, subscriptionId, subscriptionStatus, currentPeriodEnd, plan, updatedAt }`. There is no separate database schema. When billing is configured, Stripe is the source of truth: a cold process looks the customer up by `metadata.papers_user_id` if the snapshot is missing.
+The document is `{ accounts, usedCodes }`. Each account is `{ userId, stripeCustomerId, subscriptionId, subscriptionStatus, currentPeriodEnd, plan, updatedAt }`. `usedCodes` maps an authorization-code id to its expiry, in unix seconds. Expired ids are dropped on every write. An older file that is only a map of accounts is still read. There is no separate database schema. When billing is configured, Stripe is the source of truth: a cold process looks the customer up by `metadata.papers_user_id` if the snapshot is missing.
 
-OAuth access tokens and client registrations are signed tokens, not rows. Authorization codes are remembered in process memory for five minutes so the same process can reject a replay. Two serverless instances can both accept one code during that window. Set `AUTH_SIGNING_SECRET` in production so tokens survive a restart.
+OAuth access tokens and client registrations are signed tokens, not rows. Set `AUTH_SIGNING_SECRET` in production so tokens survive a restart. On Vercel, set `STORAGE_BACKEND=blob` before the deployment is public.
 
 ## Environment
 
@@ -75,8 +76,10 @@ OAuth access tokens and client registrations are signed tokens, not rows. Author
 | `STRIPE_PRICE_MONTHLY` | To charge | Existing monthly price id. |
 | `STRIPE_PRICE_YEARLY` | To charge | Existing yearly price id. |
 | `STRIPE_WEBHOOK_SECRET` | To charge | Webhook signature secret. Point Stripe at `POST /billing/webhook`. |
-| `STORAGE_BACKEND` | No | `memory` or `file`. |
+| `STORAGE_BACKEND` | No | `memory`, `file`, or `blob`. |
 | `STORAGE_PATH` | No | JSON file used when the backend is `file`. |
+| `STORAGE_BLOB_PATH` | No | Blob pathname when the backend is `blob`. Defaults to `papers/accounts.json`. |
+| `BLOB_READ_WRITE_TOKEN` | With `blob` | Read-write token for the Vercel Blob store. The SDK reads this itself. |
 | `PORT` | No | Defaults to `43127`. |
 
 Do not commit secrets. Copy what you need into the host’s environment, not into the repo.
@@ -99,7 +102,7 @@ Tests call the public APIs that do not need keys. Stripe is not called. Semantic
 
 ## Deploy
 
-Vercel: this repo includes `vercel.json` and `api/index.ts`. Set the environment variables above, set `APP_BASE_URL` to the deployment origin, and update `server.json` `remotes[0].url` to `https://<that-host>/mcp`.
+Vercel: `vercel.json` builds `api/index.ts` and routes every path to that function, including `logo.jpg` in the function bundle. Repository files such as `/package.json` and `/src/*` are not served as static files. Set the environment variables above, set `APP_BASE_URL` to the deployment origin, set `STORAGE_BACKEND=blob`, and update `server.json` `remotes[0].url` to `https://<that-host>/mcp`. Create the Blob store in the Vercel project and leave its read-write token in `BLOB_READ_WRITE_TOKEN`. Stripe’s webhook endpoint is `POST /billing/webhook`.
 
 Docker:
 

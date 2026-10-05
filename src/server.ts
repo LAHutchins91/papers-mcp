@@ -155,6 +155,10 @@ app.post("/mcp", async (req, res) => {
   }
 });
 
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found." });
+});
+
 app.use((error: { type?: string; status?: number }, _req: Request, res: Response, _next: NextFunction) => {
   if (res.headersSent) return;
   const status = error?.type === "entity.too.large" ? 413 : error?.status && error.status < 500 ? error.status : error?.type === "entity.parse.failed" ? 400 : 400;

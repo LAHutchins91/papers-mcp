@@ -3,7 +3,8 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { publicBase, resourceUrl, SCOPE } from "./config.js";
 import { escapeHtml, page } from "./html.js";
-import { consumeJti, signToken, verifyToken, type TokenPayload } from "./tokens.js";
+import { getStore } from "./store.js";
+import { signToken, verifyToken, type TokenPayload } from "./tokens.js";
 
 const ACCESS_TTL = 60 * 60;
 const REFRESH_TTL = 30 * 24 * 60 * 60;
@@ -293,7 +294,7 @@ export function installOAuth(app: Express): void {
     res.redirect(target.toString());
   });
 
-  app.post("/token", open, (req, res) => {
+  app.post("/token", open, async (req, res) => {
     if (!allow(`token:${req.ip}`, 60, 10 * 60 * 1000)) return res.status(429).json({ error: "Too many token requests." });
     const grant = String(req.body?.grant_type ?? "");
     const base = publicBase(req);
@@ -306,9 +307,17 @@ export function installOAuth(app: Express): void {
         const payload = verifyToken<TokenPayload & {
           sub?: unknown; aud?: unknown; client_hash?: unknown; redirect_uri?: unknown; code_challenge?: unknown; jti?: unknown;
         }>(code, "code");
-        if (typeof payload.jti !== "string" || !consumeJti(payload.jti, payload.exp)) {
+        if (typeof payload.jti !== "string") {
           return oauthError(res, 400, "invalid_grant", "This authorization code was already used.");
         }
+        let fresh = false;
+        try {
+          fresh = await getStore().consumeAuthorizationCode(payload.jti, payload.exp);
+        } catch {
+          console.error("Could not record authorization code");
+          return oauthError(res, 503, "server_error", "Could not record the authorization code. Retry shortly.");
+        }
+        if (!fresh) return oauthError(res, 400, "invalid_grant", "This authorization code was already used.");
         if (payload.client_hash !== sha(clientId) || payload.redirect_uri !== redirectUri) {
           return oauthError(res, 400, "invalid_grant", "The client or redirect URI does not match the authorization request.");
         }
@@ -331,7 +340,7 @@ export function installOAuth(app: Express): void {
         return;
       }
       return oauthError(res, 400, "unsupported_grant_type", "Use authorization_code or refresh_token.");
-    } catch (error) {
+    } catch {
       return oauthError(res, 400, "invalid_grant", "The token request could not be verified.");
     }
   });

@@ -152,6 +152,8 @@ describe("Papers over Streamable HTTP", () => {
     const bytes = new Uint8Array(await logo.arrayBuffer());
     expect(bytes[0]).toBe(0xff);
     expect(bytes[1]).toBe(0xd8);
+    expect((await fetch(`${base}/package.json`)).status).toBe(404);
+    expect((await fetch(`${base}/src/server.ts`)).status).toBe(404);
     const home = await fetch(`${base}/`);
     const html = await home.text();
     expect(html).toContain("Papers by Ouroboros");

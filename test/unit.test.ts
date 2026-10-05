@@ -71,6 +71,7 @@ describe("tokens and stripe events", () => {
     delete process.env.STRIPE_WEBHOOK_SECRET;
     delete process.env.STORAGE_BACKEND;
     delete process.env.STORAGE_PATH;
+    delete process.env.STORAGE_BLOB_PATH;
     resetStoreForTests();
   });
 
@@ -119,8 +120,66 @@ describe("tokens and stripe events", () => {
       plan: null,
       updatedAt: new Date().toISOString()
     });
-    const saved = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, { subscriptionStatus: string }>;
-    expect(saved["file-user-1"].subscriptionStatus).toBe("trialing");
+    const saved = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      accounts: Record<string, { subscriptionStatus: string }>;
+      usedCodes: Record<string, number>;
+    };
+    expect(saved.accounts["file-user-1"].subscriptionStatus).toBe("trialing");
+    expect(saved.usedCodes).toEqual({});
+    const exp = Math.floor(Date.now() / 1000) + 300;
+    expect(await getStore().consumeAuthorizationCode("code-1", exp)).toBe(true);
+    expect(await getStore().consumeAuthorizationCode("code-1", exp)).toBe(false);
+    const withCode = JSON.parse(fs.readFileSync(file, "utf8")) as { usedCodes: Record<string, number> };
+    expect(withCode.usedCodes["code-1"]).toBe(exp);
+    fs.writeFileSync(file, JSON.stringify({
+      accounts: saved.accounts,
+      usedCodes: { "code-1": exp, expired: exp - 10_000 }
+    }));
+    await getStore().save({
+      userId: "file-user-1",
+      stripeCustomerId: null,
+      subscriptionId: null,
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+      plan: "monthly",
+      updatedAt: new Date().toISOString()
+    });
+    const pruned = JSON.parse(fs.readFileSync(file, "utf8")) as { usedCodes: Record<string, number>; accounts: Record<string, { subscriptionStatus: string }> };
+    expect(pruned.usedCodes.expired).toBeUndefined();
+    expect(pruned.usedCodes["code-1"]).toBe(exp);
+    expect(pruned.accounts["file-user-1"].subscriptionStatus).toBe("active");
     fs.unlinkSync(file);
+  });
+
+  it("reads a legacy flat account file", async () => {
+    const file = path.join(os.tmpdir(), `papers-legacy-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(file, JSON.stringify({
+      "legacy-user": {
+        userId: "legacy-user",
+        stripeCustomerId: null,
+        subscriptionId: null,
+        subscriptionStatus: "trialing",
+        currentPeriodEnd: null,
+        plan: null,
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    }));
+    process.env.STORAGE_BACKEND = "file";
+    process.env.STORAGE_PATH = file;
+    resetStoreForTests();
+    const record = await getStore().get("legacy-user");
+    expect(record?.subscriptionStatus).toBe("trialing");
+    fs.unlinkSync(file);
+  });
+
+  it("routes every Vercel path to the function and bundles the logo", () => {
+    const config = JSON.parse(fs.readFileSync(path.resolve("vercel.json"), "utf8")) as {
+      builds: { src: string; config?: { includeFiles?: string[] } }[];
+      routes: { src: string; dest: string; handle?: string }[];
+    };
+    expect(config.builds[0].src).toBe("api/index.ts");
+    expect(config.builds[0].config?.includeFiles).toContain("logo.jpg");
+    expect(config.routes).toEqual([{ src: "/(.*)", dest: "api/index.ts" }]);
+    expect(config.routes.some((route) => route.handle === "filesystem")).toBe(false);
   });
 });
