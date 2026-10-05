@@ -7,7 +7,7 @@ The assistant can search OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv
 - MCP endpoint: `https://<your-host>/mcp`
 - Works with ChatGPT, Claude, Gemini, Grok, Cursor, and any client that speaks Streamable HTTP plus OAuth 2.1 (dynamic client registration and PKCE)
 
-`server.json` is the MCP Registry manifest (`io.github.LAHutchins91/papers-mcp`). Its `remotes[0].url` is a placeholder (`https://papers-mcp.vercel.app/mcp`). Change it to the origin you actually deploy, and set `APP_BASE_URL` to that same origin.
+`server.json` is the MCP Registry manifest (`io.github.LAHutchins91/papers`). Its `remotes[0].url` is a placeholder (`https://papers-mcp.vercel.app/mcp`). Change it to the origin you actually deploy, and set `APP_BASE_URL` to that same origin.
 
 ## Connect
 
