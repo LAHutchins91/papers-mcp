@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.LAHutchins91/papers-mcp",
+  "title": "Papers by Ouroboros",
+  "description": "Search OpenAlex, PubMed, Crossref, arXiv, and Semantic Scholar.",
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/LAHutchins91/papers-mcp",
+  "repository": {
+    "url": "https://github.com/LAHutchins91/papers-mcp",
+    "source": "github"
+  },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/LAHutchins91/papers-mcp/main/logo.jpg",
+      "mimeType": "image/jpeg",
+      "sizes": ["1024x1024"],
+      "theme": "dark"
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://papers-mcp.vercel.app/mcp"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.*
+data
+.netlify
+.vercel
+*.log
+uploads
+agent-tools
