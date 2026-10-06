@@ -120,3 +120,7 @@ Requests are spaced per host: OpenAlex about 10/s, Crossref about 4/s, PubMed ab
 ## License
 
 MIT. Copyright Lawrence Hutchins. See [LICENSE](LICENSE).
+
+---
+
+More from Ouroboros: https://ouroborosapps.com
