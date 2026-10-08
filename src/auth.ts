@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { publicBase, resourceUrl, SCOPE } from "./config.js";
+import { PUBLIC_BRAND, publicBase, resourceUrl, SCOPE } from "./config.js";
 import { escapeHtml, page } from "./html.js";
+import { configuredReviewerEmail, reviewerAccountId, reviewerCredentialsMatch, reviewerLoginConfigured } from "./reviewer.js";
 import { getStore } from "./store.js";
 import { signToken, verifyToken, type TokenPayload } from "./tokens.js";
 
@@ -101,7 +102,7 @@ function metadata(base: string) {
 function protectedResource(base: string) {
   return {
     resource: resourceUrl(base),
-    resource_name: "Papers by Ouroboros",
+    resource_name: PUBLIC_BRAND,
     authorization_servers: [base],
     scopes_supported: [SCOPE],
     bearer_methods_supported: ["header"],
@@ -153,12 +154,23 @@ function issueTokens(sub: string, aud: string) {
   };
 }
 
-function consentPage(base: string, fields: Record<string, string>, clientName: string, csrf: string): string {
+function consentPage(base: string, fields: Record<string, string>, clientName: string, csrf: string, error = ""): string {
   const hidden = Object.entries({ ...fields, csrf }).map(([key, value]) =>
     `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(value)}">`).join("");
+  const reviewer = reviewerLoginConfigured() ? `<section class="card" style="margin-top:14px">
+      <h2>Reviewer sign-in</h2>
+      <p>Store reviewers sign in here, on this same connection. There is no separate sign-up, no card, and no second factor. Complimentary access does not expire. The tools return live records from OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv. Try <code>search_papers</code> with a short query, then <code>get_paper</code>, <code>find_related_papers</code>, and <code>format_citation</code> with DOI 10.1038/nature14539.</p>
+      <form method="post" action="/authorize">${hidden}
+        <label>Email <input name="reviewer_email" type="email" autocomplete="username" maxlength="254" required></label>
+        <label>Password <input name="reviewer_password" type="password" autocomplete="current-password" maxlength="128" required></label>
+        <button class="btn secondary" name="decision" value="reviewer">Reviewer sign-in</button>
+      </form>
+    </section>` : "";
+  const banner = error ? `<p class="error">${escapeHtml(error)}</p>` : "";
   const body = `<p class="eyebrow">Connect an assistant</p>
     <h1>Allow ${escapeHtml(clientName)} to use Papers?</h1>
     <p class="lede">This connection can search public scholarly sources and format citations from the records those sources return. It can also see whether this browser’s Papers account has a trial or Pro subscription.</p>
+    ${banner}
     <section class="card">
       <p>Return address: ${escapeHtml(fields.redirect_uri)}</p>
       <p>Requested scope: ${escapeHtml(SCOPE)}</p>
@@ -168,7 +180,8 @@ function consentPage(base: string, fields: Record<string, string>, clientName: s
           <button class="btn secondary" name="decision" value="deny">Cancel</button>
         </div>
       </form>
-    </section>`;
+    </section>
+    ${reviewer}`;
   return page("Connect Papers", body, `${base}/logo.jpg`);
 }
 
@@ -269,12 +282,28 @@ export function installOAuth(app: Express): void {
     if (!csrf || csrf !== readCookie(req, "papers_csrf")) {
       return res.status(400).type("html").send(page("Connect Papers", "<h1>The connection form expired.</h1><p>Go back to your assistant and start the connection again.</p>", `${base}/logo.jpg`));
     }
-    if (decision !== "approve") return res.redirect(redirectError(fields.redirect_uri, "access_denied", fields.state));
+    if (decision !== "approve" && decision !== "reviewer") return res.redirect(redirectError(fields.redirect_uri, "access_denied", fields.state));
     if (fields.resource !== resourceUrl(base) || fields.code_challenge_method !== "S256") {
       return res.redirect(redirectError(fields.redirect_uri, "invalid_request", fields.state));
     }
-    let sub = accountIdFromCookie(req);
-    if (!sub) sub = crypto.randomUUID();
+    const secure = base.startsWith("https://");
+    let sub: string;
+    if (decision === "reviewer") {
+      if (!allow(`reviewer:${req.ip}`, 8, 10 * 60 * 1000)) {
+        return res.status(429).type("html").send(page("Connect Papers", "<h1>Too many reviewer sign-in attempts.</h1><p>Wait a few minutes and start the connection again.</p>", `${base}/logo.jpg`));
+      }
+      const email = String(body.reviewer_email ?? "").slice(0, 254);
+      const password = String(body.reviewer_password ?? "").slice(0, 200);
+      if (!reviewerCredentialsMatch(email, password)) {
+        const nextCsrf = crypto.randomBytes(24).toString("base64url");
+        res.setHeader("Set-Cookie", cookieHeader("papers_csrf", nextCsrf, 30 * 60, secure));
+        res.set("Cache-Control", "no-store");
+        return res.status(401).type("html").send(consentPage(base, fields, client.client_name, nextCsrf, "Reviewer sign-in was rejected."));
+      }
+      sub = reviewerAccountId(configuredReviewerEmail());
+    } else {
+      sub = accountIdFromCookie(req) ?? crypto.randomUUID();
+    }
     const code = signToken({
       typ: "code",
       sub,
@@ -284,7 +313,6 @@ export function installOAuth(app: Express): void {
       code_challenge: fields.code_challenge,
       jti: crypto.randomUUID()
     }, CODE_TTL);
-    const secure = base.startsWith("https://");
     const account = signToken({ typ: "account", sub }, ACCOUNT_TTL);
     res.append("Set-Cookie", cookieHeader("papers_account", account, ACCOUNT_TTL, secure));
     res.append("Set-Cookie", cookieHeader("papers_csrf", "", 0, secure));

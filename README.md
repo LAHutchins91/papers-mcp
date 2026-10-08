@@ -1,4 +1,4 @@
-# Papers by Ouroboros
+# Papers by Ouroboros Apps
 
 Papers is a remote MCP server for students, researchers, writers, and clinicians who want an assistant to search and cite real papers. It is a lighter, independent alternative to Consensus, SciSpace, and Elicit.
 
@@ -75,8 +75,11 @@ OAuth access tokens and client registrations are signed tokens, not rows. Set `A
 | --- | --- | --- |
 | `APP_BASE_URL` | Production | Public origin, no trailing slash. OAuth issuer and MCP audience. |
 | `AUTH_SIGNING_SECRET` | Production | HMAC secret for OAuth tokens and the account cookie. |
-| `SCHOLARLY_CONTACT_EMAIL` | Production | Mailto address in User-Agent and polite-pool parameters for OpenAlex, Crossref, and PubMed. |
-| `SUPPORT_EMAIL` | No | Shown on the support page. Falls back to the scholarly contact address. |
+| `SCHOLARLY_CONTACT_EMAIL` | Production | Mailto address in User-Agent and polite-pool parameters for OpenAlex, Crossref, and PubMed. Not shown on the public pages. |
+| `REVIEWER_LOGIN_EMAIL` | For store review | Email typed on Reviewer sign-in. See below. |
+| `REVIEWER_LOGIN_PASSWORD_HASH` | For store review | scrypt hash of the reviewer password. See below. |
+| `COMP_ACCOUNT_EMAILS` | For store review | Comma-separated emails with permanent complimentary access. |
+| `COMP_ACCOUNT_IDS` | No | Comma-separated account ids with permanent complimentary access. |
 | `NCBI_API_KEY` | No | Higher PubMed rate limit. |
 | `SEMANTIC_SCHOLAR_API_KEY` | No | Higher Semantic Scholar rate limit. Sent as `x-api-key`. |
 | `STRIPE_SECRET_KEY` | To charge | Stripe secret key. |
@@ -129,5 +132,56 @@ Requests are spaced per host: OpenAlex about 10/s, Crossref about 4/s, PubMed ab
 MIT. Copyright Lawrence Hutchins. See [LICENSE](LICENSE).
 
 ---
+
+## Contact
+
+Public support, privacy, export, and deletion: [ouroborosplugins@gmail.com](mailto:ouroborosplugins@gmail.com)
+
+- Privacy: `/privacy`
+- Terms: `/terms`
+- Support: `/support`
+- Site: https://ouroborosapps.com
+
+The public pages always show that mailbox. `SCHOLARLY_CONTACT_EMAIL` is sent only in scholarly API polite-use headers. It is not printed on the site. `SUPPORT_EMAIL` is not read.
+
+`server.json`, `glama.json`, and `.cursor-plugin/plugin.json` have no contact-email field. The registry schema used by `server.json` does not define one.
+
+## Store-reviewer sign-in
+
+Reviewers sign in on the OAuth consent screen with **Reviewer sign-in**. There is no separate sign-up, no second factor, and no card. Set these on the host (Vercel project → Settings → Environment Variables), for Production and for any Preview URL a reviewer will open. Do not commit the values.
+
+| Variable | Format |
+| --- | --- |
+| `REVIEWER_LOGIN_EMAIL` | One email address, the value the reviewer types. Lowercased when compared. |
+| `REVIEWER_LOGIN_PASSWORD_HASH` | One line: `scrypt$16384$8$1$<salt-base64url>$<hash-base64url>`. Salt is 16 bytes. Hash is 32 bytes. scrypt parameters are N=16384, r=8, p=1. |
+| `COMP_ACCOUNT_EMAILS` | Comma-separated emails. Include `REVIEWER_LOGIN_EMAIL`. Each email grants a permanent entitlement to the stable account id derived from it. |
+| `COMP_ACCOUNT_IDS` | Optional comma-separated account ids. Use the derived reviewer id, or an anonymous account id you want to comp. |
+
+Login checks the email and password hash. The allowlist is what skips the trial and Stripe. Set `COMP_ACCOUNT_EMAILS` to the same address as `REVIEWER_LOGIN_EMAIL`, or put the derived id in `COMP_ACCOUNT_IDS`. A normal anonymous account is unchanged and still needs a trial when billing is configured.
+
+Generate the hash (the password is an argument, not a file in the repo):
+
+```bash
+node --input-type=module -e '
+import crypto from "node:crypto";
+const password = process.argv[1];
+if (!password) { console.error("Pass the password as an argument."); process.exit(1); }
+const salt = crypto.randomBytes(16);
+const hash = crypto.scryptSync(password, salt, 32, { N: 16384, r: 8, p: 1 });
+process.stdout.write(`scrypt$16384$8$1$${salt.toString("base64url")}$${hash.toString("base64url")}\n`);
+' 'replace-with-the-reviewer-password'
+```
+
+Print the account id for `COMP_ACCOUNT_IDS` (first 32 hex characters of SHA-256 over `papers-reviewer`, a NUL byte, and the lowercased email):
+
+```bash
+node --input-type=module -e '
+import crypto from "node:crypto";
+const email = process.argv[1].trim().toLowerCase();
+process.stdout.write(crypto.createHash("sha256").update(`papers-reviewer\0${email}`).digest("hex").slice(0, 32) + "\n");
+' 'reviewer@example.com'
+```
+
+After sign-in, the tools return live records. A reviewer can call `search_papers` with a short query, then `get_paper`, `find_related_papers`, and `format_citation` with DOI `10.1038/nature14539`.
 
 More from Ouroboros: https://ouroborosapps.com

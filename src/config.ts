@@ -1,7 +1,11 @@
 import type { Request } from "express";
 
 export const SERVICE = "papers";
+/** Name sent in MCP server instructions. Tool text stays on this string. */
 export const PRODUCT = "Papers by Ouroboros";
+export const PUBLIC_BRAND = "Papers by Ouroboros Apps";
+export const PUBLIC_SITE = "https://ouroborosapps.com";
+export const PUBLIC_CONTACT_EMAIL = "ouroborosplugins@gmail.com";
 export const VERSION = "1.0.0";
 export const TRIAL_DAYS = 14;
 export const SCOPE = "papers";
@@ -13,9 +17,9 @@ export function contactEmail(): string | null {
   return EMAIL.test(email) ? email : null;
 }
 
-export function supportEmail(): string | null {
-  const email = process.env.SUPPORT_EMAIL?.trim() || process.env.SCHOLARLY_CONTACT_EMAIL?.trim() || "";
-  return EMAIL.test(email) ? email : null;
+/** Public support and privacy mailbox. Not the scholarly polite-use address. */
+export function supportEmail(): string {
+  return PUBLIC_CONTACT_EMAIL;
 }
 
 export function publicBase(req: Pick<Request, "header" | "protocol">): string {

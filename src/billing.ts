@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import crypto from "node:crypto";
 import { isBillingConfigured, publicBase, TRIAL_DAYS } from "./config.js";
+import { isCompAccount } from "./reviewer.js";
 import { getStore, type SubscriptionRecord } from "./store.js";
 
 function stripeSecret(): string {
@@ -147,6 +148,7 @@ export async function lookupStripe(userId: string): Promise<SubscriptionRecord |
 }
 
 export async function userMayUseTools(userId: string): Promise<"allowed" | "payment_required" | "unavailable"> {
+  if (isCompAccount(userId)) return "allowed";
   if (!isBillingConfigured()) return "allowed";
   try {
     const local = await getStore().get(userId);

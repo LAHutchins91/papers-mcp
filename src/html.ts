@@ -1,3 +1,5 @@
+import { PUBLIC_BRAND, PUBLIC_CONTACT_EMAIL, PUBLIC_SITE } from "./config.js";
+
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -17,10 +19,10 @@ export function page(title: string, body: string, logoUrl: string): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#070807">
-  <meta name="description" content="Papers by Ouroboros searches OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, then cites only the papers those APIs return.">
+  <meta name="description" content="${escapeHtml(PUBLIC_BRAND)} searches OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, then cites only the papers those APIs return.">
   <title>${escapeHtml(title)}</title>
   <link rel="icon" href="/logo.jpg" type="image/jpeg">
-  <meta property="og:title" content="Papers by Ouroboros">
+  <meta property="og:title" content="${escapeHtml(PUBLIC_BRAND)}">
   <meta property="og:image" content="${escapeHtml(logoUrl)}">
   <style>
     :root { color-scheme: dark; --bg:#070807; --card:#101612; --line:#234232; --text:#e8f6ec; --muted:#9db5a6; --accent:#3ddc84; --accent-2:#147a45; }
@@ -80,10 +82,13 @@ export function page(title: string, body: string, logoUrl: string): string {
     </header>
     ${body}
     <footer>
-      <span>Papers by Ouroboros</span>
+      <span>${escapeHtml(PUBLIC_BRAND)}</span>
+      <a href="${escapeHtml(PUBLIC_SITE)}">ouroborosapps.com</a>
+      <a href="mailto:${escapeHtml(PUBLIC_CONTACT_EMAIL)}">${escapeHtml(PUBLIC_CONTACT_EMAIL)}</a>
       <a href="/connect">Connect an assistant</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
+      <a href="/support">Support</a>
       <a href="/health">Health</a>
     </footer>
   </main>
