@@ -159,11 +159,27 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found." });
 });
 
-app.use((error: { type?: string; status?: number }, _req: Request, res: Response, _next: NextFunction) => {
+export function handleRouteError(error: unknown, req: Request, res: Response, _next: NextFunction): void {
+  const type = typeof error === "object" && error !== null && "type" in error ? (error as { type?: string }).type : undefined;
+  const tooLarge = type === "entity.too.large";
+  const badBody = typeof type === "string" && type.startsWith("entity.");
+  // Log the error class and message only: no headers, query, body, or stack, so tokens and codes stay out of logs.
+  const name = error instanceof Error ? (error.constructor?.name && error.constructor.name !== "Error" ? error.constructor.name : error.name) : typeof error;
+  const message = error instanceof Error ? error.message.slice(0, 300) : "";
+  console.error(JSON.stringify({ event: "route_error", method: req.method, path: req.path, name, message }));
   if (res.headersSent) return;
-  const status = error?.type === "entity.too.large" ? 413 : error?.status && error.status < 500 ? error.status : error?.type === "entity.parse.failed" ? 400 : 400;
-  res.status(status).json({ error: status === 413 ? "Request is too large." : "Invalid request." });
-});
+  if (tooLarge) {
+    res.status(413).json({ error: "Request is too large." });
+    return;
+  }
+  if (badBody) {
+    res.status(400).json({ error: "Invalid request." });
+    return;
+  }
+  res.status(500).json({ error: "Something went wrong. Try again in a moment." });
+}
+
+app.use(handleRouteError);
 
 const invokedDirectly = process.argv[1] ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 if (process.env.NODE_ENV !== "test" && !process.env.VERCEL && !process.env.VITEST && invokedDirectly) {

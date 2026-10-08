@@ -1,6 +1,7 @@
 import { BlobNotFoundError, BlobPreconditionFailedError } from "@vercel/blob";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  BlobStaleReadError,
   getStore,
   resetStoreForTests,
   setBlobClientForTests,
@@ -33,6 +34,8 @@ function streamOf(text: string): ReadableStream<Uint8Array> {
   });
 }
 
+const BLOB_URL = "https://store.private.blob.vercel-storage.com/papers/accounts.json";
+
 class FakeBlob implements BlobStoreClient {
   body: string | null = null;
   etag = "etag-1";
@@ -40,6 +43,7 @@ class FakeBlob implements BlobStoreClient {
   failuresLeft = 0;
   stealNext = false;
   onFailure: (() => void) | null = null;
+  served: ((pathname: string) => { body: string; etag: string }) | null = null;
   puts: { pathname: string; body: string; options: {
     access: "private";
     allowOverwrite: true;
@@ -49,13 +53,19 @@ class FakeBlob implements BlobStoreClient {
   } }[] = [];
   gets: { pathname: string; access: "private"; useCache: false }[] = [];
 
+  async head(): Promise<{ etag: string; url: string } | null> {
+    if (this.body === null) return null;
+    return { etag: this.etag, url: BLOB_URL };
+  }
+
   async get(pathname: string, options: { access: "private"; useCache: false }): Promise<BlobReadResult | null> {
     this.gets.push({ pathname, access: options.access, useCache: options.useCache });
     if (this.body === null) {
       if (this.throwIfMissing) throw new BlobNotFoundError();
       return null;
     }
-    return { statusCode: 200, stream: streamOf(this.body), blob: { etag: this.etag } };
+    const view = this.served ? this.served(pathname) : { body: this.body, etag: this.etag };
+    return { statusCode: 200, stream: streamOf(view.body), blob: { etag: view.etag } };
   }
 
   async put(pathname: string, body: string, options: {
@@ -162,10 +172,26 @@ describe("vercel blob store", () => {
       fake.body = JSON.stringify({ accounts: {}, usedCodes: { "code-a": future } });
       fake.etag = "etag-raced";
     };
-    const store = useBlob(fake);
-    expect(await store.consumeAuthorizationCode("code-a", future)).toBe(false);
-    expect(fake.puts).toHaveLength(1);
-    expect(fake.document().usedCodes["code-a"]).toBe(future);
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((line?: unknown) => {
+      logged.push(String(line));
+    });
+    try {
+      const store = useBlob(fake);
+      expect(await store.consumeAuthorizationCode("code-a", future)).toBe(false);
+      expect(fake.puts).toHaveLength(1);
+      expect(fake.document().usedCodes["code-a"]).toBe(future);
+      const failure = logged.map((line) => JSON.parse(line) as { event?: string; attempt?: number; name?: string; message?: string })
+        .find((entry) => entry.event === "storage_write_failed");
+      expect(failure).toMatchObject({
+        event: "storage_write_failed",
+        attempt: 0,
+        name: "BlobPreconditionFailedError",
+        message: "Vercel Blob: Precondition failed: ETag mismatch."
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("retries when the first put loses the race and then records the code", async () => {
@@ -209,5 +235,56 @@ describe("vercel blob store", () => {
     expect(saved.usedCodes.live).toBe(future);
     expect(saved.accounts["user-a"].subscriptionStatus).toBe("active");
     expect(fake.puts[0].options.ifMatch).toBe("etag-seed");
+  });
+
+  it("writes with the API etag when the GET ETag header is quoted", async () => {
+    const fake = new FakeBlob();
+    fake.body = JSON.stringify({ accounts: { other: account("other", "active") }, usedCodes: {} });
+    fake.etag = "etag-seed";
+    fake.served = () => ({ body: fake.body ?? "", etag: `W/"${fake.etag}"` });
+    const store = useBlob(fake);
+    await store.save(account("user-a"));
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0].options.ifMatch).toBe("etag-seed");
+    const saved = fake.document();
+    expect(saved.accounts.other.userId).toBe("other");
+    expect(saved.accounts["user-a"].subscriptionStatus).toBe("trialing");
+  });
+
+  it("re-reads a versioned URL when the plain GET is a stale cached copy", async () => {
+    const stale = { body: JSON.stringify({ accounts: {}, usedCodes: {} }), etag: "etag-old" };
+    const fake = new FakeBlob();
+    fake.body = JSON.stringify({ accounts: { other: account("other", "active") }, usedCodes: {} });
+    fake.etag = "etag-new";
+    fake.served = (pathname) => (pathname.includes("?v=") ? { body: fake.body ?? "", etag: fake.etag } : stale);
+    const store = useBlob(fake);
+    await store.save(account("user-a"));
+    expect(fake.gets[1]?.pathname).toBe(`${BLOB_URL}?v=etag-new`);
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0].options.ifMatch).toBe("etag-new");
+    const saved = fake.document();
+    expect(saved.accounts.other.userId).toBe("other");
+    expect(saved.accounts["user-a"].userId).toBe("user-a");
+  });
+
+  it("refuses to write when every read is stale", async () => {
+    const fake = new FakeBlob();
+    fake.body = "{}";
+    fake.etag = "etag-new";
+    fake.served = () => ({ body: "{}", etag: "etag-old" });
+    const store = useBlob(fake);
+    await expect(store.save(account("user-a"))).rejects.toBeInstanceOf(BlobStaleReadError);
+    expect(fake.puts).toHaveLength(0);
+  });
+
+  it("creates a missing blob without ifMatch", async () => {
+    const fake = new FakeBlob();
+    fake.throwIfMissing = true;
+    const store = useBlob(fake);
+    await store.save(account("user-a"));
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0].options.ifMatch).toBeUndefined();
+    expect(fake.puts[0].pathname).toBe("papers/accounts.json");
+    expect(fake.document().accounts["user-a"].userId).toBe("user-a");
   });
 });
