@@ -1,0 +1,20 @@
+{
+  "name": "papers",
+  "displayName": "Papers by Ouroboros Apps",
+  "version": "1.0.1",
+  "description": "Papers searches research papers and returns real citations and reference formatting so an assistant does not invent sources.",
+  "author": {
+    "name": "Ouroboros"
+  },
+  "homepage": "https://ouroborosapps.com",
+  "repository": "https://github.com/LAHutchins91/papers-mcp",
+  "license": "MIT",
+  "keywords": [
+    "research papers",
+    "citations",
+    "references",
+    "mcp"
+  ],
+  "logo": "logo.jpg",
+  "publisher": "Ouroboros"
+}
