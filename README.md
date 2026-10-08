@@ -9,6 +9,13 @@ The assistant can search OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv
 
 `server.json` is the MCP Registry manifest (`io.github.LAHutchins91/papers`). Its `remotes[0].url` is a placeholder (`https://papers-mcp.vercel.app/mcp`). Change it to the origin you actually deploy, and set `APP_BASE_URL` to that same origin.
 
+## Hosted server
+
+- MCP server URL: `https://papers-mcp.vercel.app/mcp` (Streamable HTTP, OAuth sign-in)
+- Docs: https://ouroborosapps.com/docs/papers
+- Status: early access. Paste the URL into Claude, Cursor, Grok, or ChatGPT developer mode.
+- Registry name: `io.github.LAHutchins91/papers`
+
 ## Connect
 
 Leave the client id and secret empty so the client can register itself.
