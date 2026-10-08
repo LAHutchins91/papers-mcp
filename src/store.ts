@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { BlobNotFoundError, BlobPreconditionFailedError, get as blobGet, put as blobPut } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, get as blobGet, head as blobHead, put as blobPut } from "@vercel/blob";
 
 /** Subscription snapshot. Stripe remains the source of truth when billing is configured. */
 export interface SubscriptionRecord {
@@ -32,6 +32,7 @@ export interface BlobReadResult {
 }
 
 export interface BlobStoreClient {
+  head(pathname: string): Promise<{ etag: string; url: string } | null>;
   get(pathname: string, options: { access: "private"; useCache: false }): Promise<BlobReadResult | null>;
   put(pathname: string, body: string, options: {
     access: "private";
@@ -43,6 +44,15 @@ export interface BlobStoreClient {
 }
 
 const WRITE_ATTEMPTS = 5;
+const FRESH_READ_ATTEMPTS = 3;
+
+/** Thrown when the bytes we can read never match the version Blob reports as current. */
+export class BlobStaleReadError extends Error {
+  constructor() {
+    super("Blob read did not match the current blob version.");
+    this.name = "BlobStaleReadError";
+  }
+}
 
 function emptyDocument(): StoreDocument {
   return { accounts: {}, usedCodes: {} };
@@ -107,6 +117,17 @@ function notFound(error: unknown): boolean {
 
 function preconditionFailed(error: unknown): boolean {
   return error instanceof BlobPreconditionFailedError || (error instanceof Error && error.name === "BlobPreconditionFailedError");
+}
+
+/** Compare a GET response ETag header with the API etag: ignore a weak prefix and surrounding quotes. */
+function sameEtag(a: string, b: string): boolean {
+  const normalize = (value: string) => value.trim().replace(/^W\//, "").replace(/^"(.*)"$/, "$1");
+  return normalize(a) === normalize(b);
+}
+
+function errorLogName(error: unknown): string {
+  if (!(error instanceof Error)) return typeof error;
+  return error.constructor?.name && error.constructor.name !== "Error" ? error.constructor.name : error.name;
 }
 
 class MemoryStore implements AccountStore {
@@ -182,6 +203,15 @@ class FileStore implements AccountStore {
 }
 
 const vercelBlobClient: BlobStoreClient = {
+  head: async (pathname) => {
+    try {
+      const meta = await blobHead(pathname);
+      return { etag: meta.etag, url: meta.url };
+    } catch (error) {
+      if (notFound(error)) return null;
+      throw error;
+    }
+  },
   get: (pathname, options) => blobGet(pathname, options),
   put: (pathname, body, options) => blobPut(pathname, body, options)
 };
@@ -197,9 +227,9 @@ class BlobStore implements AccountStore {
     return run;
   }
 
-  private async load(): Promise<{ doc: StoreDocument; etag?: string }> {
+  private async load(source = this.pathname): Promise<{ doc: StoreDocument; etag?: string }> {
     try {
-      const result = await this.client.get(this.pathname, { access: "private", useCache: false });
+      const result = await this.client.get(source, { access: "private", useCache: false });
       if (!result) return { doc: emptyDocument() };
       if (result.statusCode !== undefined && result.statusCode !== 200) {
         throw new Error("Blob store read did not return the account document.");
@@ -219,10 +249,30 @@ class BlobStore implements AccountStore {
     }
   }
 
+  // Writes are conditional on the etag from head(), which comes from the Blob API rather than the CDN.
+  // The bytes must belong to that same version, otherwise we would overwrite newer data with a stale copy.
+  private async loadForWrite(): Promise<{ doc: StoreDocument; etag?: string }> {
+    for (let attempt = 0; attempt < FRESH_READ_ATTEMPTS; attempt++) {
+      const meta = await this.client.head(this.pathname);
+      if (!meta) return { doc: emptyDocument() };
+      let source = this.pathname;
+      if (attempt > 0) {
+        const versioned = new URL(meta.url);
+        versioned.searchParams.set("v", meta.etag);
+        source = versioned.toString();
+      }
+      const loaded = await this.load(source);
+      if (loaded.etag !== undefined && sameEtag(loaded.etag, meta.etag)) {
+        return { doc: loaded.doc, etag: meta.etag };
+      }
+    }
+    throw new BlobStaleReadError();
+  }
+
   private async mutate(apply: (doc: StoreDocument) => StoreDocument | null, confirm: (doc: StoreDocument) => boolean): Promise<boolean> {
     let lastError: unknown;
     for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt++) {
-      const loaded = await this.load();
+      const loaded = await this.loadForWrite();
       const current: StoreDocument = {
         accounts: loaded.doc.accounts,
         usedCodes: pruneUsedCodes(loaded.doc.usedCodes)
@@ -239,11 +289,13 @@ class BlobStore implements AccountStore {
           ifMatch: loaded.etag
         });
       } catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 300) : "";
+        console.error(JSON.stringify({ event: "storage_write_failed", attempt, name: errorLogName(error), message }));
         if (!preconditionFailed(error)) throw error;
         lastError = error;
         continue;
       }
-      const checked = await this.load();
+      const checked = await this.loadForWrite();
       if (confirm(checked.doc)) return true;
       lastError = new Error("Blob store write was overwritten.");
     }
