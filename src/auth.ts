@@ -168,7 +168,7 @@ function consentPage(base: string, fields: Record<string, string>, clientName: s
     </section>` : "";
   const banner = error ? `<p class="error">${escapeHtml(error)}</p>` : "";
   const body = `<p class="eyebrow">Connect an assistant</p>
-    <h1>Allow ${escapeHtml(clientName)} to use Papers?</h1>
+    <h1>Allow ${escapeHtml(clientName)} to use ${escapeHtml(PUBLIC_BRAND)}?</h1>
     <p class="lede">This connection can search public scholarly sources and format citations from the records those sources return. It can also see whether this browser’s Papers account has a trial or Pro subscription.</p>
     ${banner}
     <section class="card">
@@ -182,7 +182,7 @@ function consentPage(base: string, fields: Record<string, string>, clientName: s
       </form>
     </section>
     ${reviewer}`;
-  return page("Connect Papers", body, `${base}/logo.jpg`);
+  return page(PUBLIC_BRAND, body, `${base}/logo.jpg`);
 }
 
 export function installOAuth(app: Express): void {
@@ -245,7 +245,7 @@ export function installOAuth(app: Express): void {
     };
     const client = clientRecord(fields.client_id);
     if (!client || !client.redirect_uris.includes(fields.redirect_uri) || !redirectAllowed(fields.redirect_uri)) {
-      return res.status(400).type("html").send(page("Connect Papers", "<h1>This connection request is not valid.</h1><p>The client id or return address could not be verified.</p>", `${base}/logo.jpg`));
+      return res.status(400).type("html").send(page(PUBLIC_BRAND, "<h1>This connection request is not valid.</h1><p>The client id or return address could not be verified.</p>", `${base}/logo.jpg`));
     }
     if (fields.response_type !== "code" || fields.code_challenge_method !== "S256" || fields.code_challenge.length < 43) {
       return res.redirect(redirectError(fields.redirect_uri, "invalid_request", fields.state));
@@ -277,10 +277,10 @@ export function installOAuth(app: Express): void {
     const decision = String(body.decision ?? "");
     const client = clientRecord(fields.client_id);
     if (!client || !client.redirect_uris.includes(fields.redirect_uri)) {
-      return res.status(400).type("html").send(page("Connect Papers", "<h1>This connection request is not valid.</h1>", `${base}/logo.jpg`));
+      return res.status(400).type("html").send(page(PUBLIC_BRAND, "<h1>This connection request is not valid.</h1>", `${base}/logo.jpg`));
     }
     if (!csrf || csrf !== readCookie(req, "papers_csrf")) {
-      return res.status(400).type("html").send(page("Connect Papers", "<h1>The connection form expired.</h1><p>Go back to your assistant and start the connection again.</p>", `${base}/logo.jpg`));
+      return res.status(400).type("html").send(page(PUBLIC_BRAND, "<h1>The connection form expired.</h1><p>Go back to your assistant and start the connection again.</p>", `${base}/logo.jpg`));
     }
     if (decision !== "approve" && decision !== "reviewer") return res.redirect(redirectError(fields.redirect_uri, "access_denied", fields.state));
     if (fields.resource !== resourceUrl(base) || fields.code_challenge_method !== "S256") {
@@ -290,7 +290,7 @@ export function installOAuth(app: Express): void {
     let sub: string;
     if (decision === "reviewer") {
       if (!allow(`reviewer:${req.ip}`, 8, 10 * 60 * 1000)) {
-        return res.status(429).type("html").send(page("Connect Papers", "<h1>Too many reviewer sign-in attempts.</h1><p>Wait a few minutes and start the connection again.</p>", `${base}/logo.jpg`));
+        return res.status(429).type("html").send(page(PUBLIC_BRAND, "<h1>Too many reviewer sign-in attempts.</h1><p>Wait a few minutes and start the connection again.</p>", `${base}/logo.jpg`));
       }
       const email = String(body.reviewer_email ?? "").slice(0, 254);
       const password = String(body.reviewer_password ?? "").slice(0, 200);

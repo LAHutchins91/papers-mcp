@@ -72,7 +72,7 @@ export function page(title: string, body: string, logoUrl: string): string {
 <body>
   <main class="shell">
     <header>
-      <a class="brand" href="/"><img src="/logo.jpg" alt="" width="42" height="42"> Papers</a>
+      <a class="brand" href="/"><img src="/logo.jpg" alt="" width="42" height="42"> ${escapeHtml(PUBLIC_BRAND)}</a>
       <nav>
         <a href="/connect">Connect</a>
         <a href="/account">Trial</a>

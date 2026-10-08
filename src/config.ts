@@ -1,9 +1,9 @@
 import type { Request } from "express";
 
 export const SERVICE = "papers";
-/** Name sent in MCP server instructions. Tool text stays on this string. */
-export const PRODUCT = "Papers by Ouroboros";
-export const PUBLIC_BRAND = "Papers by Ouroboros Apps";
+/** Product name shown to MCP clients, /health, and visitors. */
+export const PRODUCT = "Papers by Ouroboros Apps";
+export const PUBLIC_BRAND = PRODUCT;
 export const PUBLIC_SITE = "https://ouroborosapps.com";
 export const PUBLIC_CONTACT_EMAIL = "ouroborosplugins@gmail.com";
 export const VERSION = "1.0.0";

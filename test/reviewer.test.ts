@@ -339,7 +339,7 @@ describe("reviewer sign-in over OAuth", () => {
         })
       });
       expect(normalCall.status).toBe(403);
-      expect(await normalCall.json()).toMatchObject({ error: "A Papers trial or Pro subscription is required." });
+      expect(await normalCall.json()).toMatchObject({ error: "A Papers by Ouroboros Apps trial or Pro subscription is required." });
       expect(stripeUrls.length).toBeGreaterThan(0);
     } finally {
       globalThis.fetch = original;

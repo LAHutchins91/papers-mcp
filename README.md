@@ -1,6 +1,6 @@
 # Papers by Ouroboros Apps
 
-Papers is a remote MCP server for students, researchers, writers, and clinicians who want an assistant to search and cite real papers. It is a lighter, independent alternative to Consensus, SciSpace, and Elicit.
+Papers by Ouroboros Apps is a remote MCP server for students, researchers, writers, and clinicians who want an assistant to search and cite real papers. It is a lighter, independent alternative to Consensus, SciSpace, and Elicit.
 
 The assistant can search OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, open a paper by DOI, PMID, or arXiv id, see what cites a paper or what that paper cites, and format APA, MLA, Chicago, or BibTeX. Every result includes a source link and an identifier that came back from one of those APIs. If an API returns nothing, Papers returns nothing. It does not fill gaps with invented citations.
 

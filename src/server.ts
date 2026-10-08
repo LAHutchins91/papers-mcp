@@ -91,8 +91,8 @@ function guardMcpOrigin(req: Request, res: Response): boolean {
 
 function unauthorized(req: Request, res: Response): void {
   const metadata = `${publicBase(req)}/.well-known/oauth-protected-resource/mcp`;
-  res.set("WWW-Authenticate", `Bearer realm="Papers", resource_metadata="${metadata}"`);
-  res.status(401).json({ error: "Sign in to Papers to use these tools." });
+  res.set("WWW-Authenticate", `Bearer realm="${PRODUCT}", resource_metadata="${metadata}"`);
+  res.status(401).json({ error: `Sign in to ${PRODUCT} to use these tools.` });
 }
 
 const publicMethods = new Set(["initialize", "notifications/initialized", "tools/list", "ping"]);
@@ -105,8 +105,8 @@ app.options("/mcp", (req, res) => {
 app.get("/mcp", (req, res) => {
   if (!guardMcpOrigin(req, res)) return;
   const metadata = `${publicBase(req)}/.well-known/oauth-protected-resource/mcp`;
-  res.set("WWW-Authenticate", `Bearer realm="Papers", resource_metadata="${metadata}"`);
-  res.status(405).set("Allow", "POST, DELETE, OPTIONS").json({ error: "Use Streamable HTTP POST for Papers." });
+  res.set("WWW-Authenticate", `Bearer realm="${PRODUCT}", resource_metadata="${metadata}"`);
+  res.status(405).set("Allow", "POST, DELETE, OPTIONS").json({ error: `Use Streamable HTTP POST for ${PRODUCT}.` });
 });
 
 app.delete("/mcp", (req, res) => {
@@ -130,7 +130,7 @@ app.post("/mcp", async (req, res) => {
     const gate = await userMayUseTools(access.sub);
     if (gate === "payment_required") {
       res.status(403).json({
-        error: "A Papers trial or Pro subscription is required.",
+        error: `A ${PRODUCT} trial or Pro subscription is required.`,
         access_information: `${publicBase(req)}/account`
       });
       return;

@@ -19,7 +19,7 @@ export function installPages(app: Express): void {
       <div>
         <p class="eyebrow">${escapeHtml(PUBLIC_BRAND)}</p>
         <h1>Answers with papers you can open.</h1>
-        <p class="lede">Papers searches OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, then gives your assistant the abstract, identifiers, and a citation. If those APIs did not return a paper, Papers will not invent one.</p>
+        <p class="lede">${escapeHtml(PUBLIC_BRAND)} searches OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, then gives your assistant the abstract, identifiers, and a citation. If those APIs did not return a paper, ${escapeHtml(PUBLIC_BRAND)} will not invent one.</p>
         <div class="actions"><a class="btn primary" href="/connect">Connect an assistant</a><a class="btn secondary" href="/account">Start a 14-day trial</a></div>
       </div>
       <img class="logo" src="/logo.jpg" alt="Green ouroboros on black around a white paper and magnifying glass, with the word Papers">
@@ -72,12 +72,12 @@ export function installPages(app: Express): void {
   }
 }`;
     const body = `<p class="eyebrow">Connect</p>
-      <h1>Bring Papers into the assistant you already use.</h1>
+      <h1>Bring ${escapeHtml(PUBLIC_BRAND)} into the assistant you already use.</h1>
       <p class="lede">Papers speaks Streamable HTTP and OAuth. It works with ChatGPT, Claude, Gemini, Grok, Cursor, and any other client that can register itself and use PKCE. Leave the client id blank so dynamic registration can run.</p>
       <section class="card"><h3>Cursor</h3><p>Add this to <code>~/.cursor/mcp.json</code> or a project <code>.cursor/mcp.json</code>.</p><pre>${escapeHtml(cursor)}</pre></section>
       <section class="card" style="margin-top:14px"><h3>Claude Code</h3><pre>claude mcp add --transport http papers ${escapeHtml(mcp)}</pre></section>
       <section class="card" style="margin-top:14px"><h3>ChatGPT, Claude, Gemini, and Grok</h3><p>Add <code>${escapeHtml(mcp)}</code> as a remote MCP server and choose OAuth when asked. Approve the consent screen. Tool calls need that sign-in. When billing is configured, they also need a trial or Pro subscription.</p></section>`;
-    res.type("html").send(shell(req, "Connect Papers", body));
+    res.type("html").send(shell(req, PUBLIC_BRAND, body));
   });
 
   app.get("/account", async (req, res) => {
@@ -141,14 +141,14 @@ export function installPages(app: Express): void {
       : configured
         ? `<p><a class="btn primary" href="/connect">Connect an assistant</a></p>`
         : "";
-    const body = `<p class="eyebrow">Trial</p><h1>Your Papers account</h1>
+    const body = `<p class="eyebrow">Trial</p><h1>Your ${escapeHtml(PUBLIC_BRAND)} account</h1>
       ${notice}
       <section class="card"><p>${escapeHtml(status)}</p>${userId ? `<p>Account reference ${escapeHtml(userId.slice(0, 8))}</p>` : ""}</section>
       ${actions}
       <p class="lede">${comped
         ? "Tool calls on this connection are already entitled."
         : "The 14-day trial starts at Stripe Checkout. Papers does not print an amount on this page."}</p>`;
-    res.set("Cache-Control", "no-store").type("html").send(shell(req, "Papers trial", body));
+    res.set("Cache-Control", "no-store").type("html").send(shell(req, PUBLIC_BRAND, body));
   });
 
   app.get("/privacy", (req, res) => {

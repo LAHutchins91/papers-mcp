@@ -146,7 +146,9 @@ afterAll(async () => {
 describe("Papers over Streamable HTTP", () => {
   it("serves health, the logo, and a landing page without a price", async () => {
     const health = await fetch(`${base}/health`);
-    expect(await health.json()).toMatchObject({ ok: true, name: "Papers by Ouroboros", billingConfigured: false });
+    const healthBody = await health.json() as { ok: boolean; name: string; service: string; billingConfigured: boolean };
+    expect(healthBody).toMatchObject({ ok: true, service: "papers", name: "Papers by Ouroboros Apps", billingConfigured: false });
+    expect(Object.keys(healthBody).sort()).toEqual(["billingConfigured", "contactEmailConfigured", "name", "ok", "service", "storageBackend", "stripeWebhookConfigured", "version"]);
     const logo = await fetch(`${base}/logo.jpg`);
     expect(logo.headers.get("content-type")).toMatch(/image\/jpeg/);
     const bytes = new Uint8Array(await logo.arrayBuffer());
@@ -156,12 +158,31 @@ describe("Papers over Streamable HTTP", () => {
     expect((await fetch(`${base}/src/server.ts`)).status).toBe(404);
     const home = await fetch(`${base}/`);
     const html = await home.text();
-    expect(html).toContain("Papers by Ouroboros");
+    expect(html).toContain("Papers by Ouroboros Apps");
+    expect(html).not.toContain("Papers by Ouroboros<");
+    const listedName = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "papers-name-check", version: "0.0.0" }
+        }
+      })
+    });
+    const initialized = await listedName.json() as { result?: { serverInfo?: { name?: string; version?: string }; instructions?: string } };
+    expect(initialized.result?.serverInfo).toEqual({ name: "Papers by Ouroboros Apps", version: "1.0.0" });
+    expect(initialized.result?.instructions?.startsWith("Papers by Ouroboros Apps ")).toBe(true);
     expect(html).toContain("/logo.jpg");
     expect(html).not.toMatch(/\$\s?\d/);
     expect(html).not.toMatch(/\bUSD\b/);
     const metadata = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`);
-    const resource = await metadata.json() as { resource: string; authorization_servers: string[] };
+    const resource = await metadata.json() as { resource: string; resource_name?: string; authorization_servers: string[] };
+    expect(resource.resource_name).toBe("Papers by Ouroboros Apps");
     expect(resource.resource).toBe(`${base}/mcp`);
     expect(resource.authorization_servers).toEqual([base]);
   });
