@@ -75,6 +75,12 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.get("/.well-known/openai-apps-challenge", (_req, res) => {
+  const token = process.env.OPENAI_APPS_CHALLENGE;
+  if (!token) return res.status(404).type("text").send("Verification is not configured.");
+  res.type("text").send(token);
+});
+
 installPages(app);
 installOAuth(app);
 installBilling(app, accountIdFromRequest);
