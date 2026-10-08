@@ -187,7 +187,7 @@ describe("vercel blob store", () => {
         event: "storage_write_failed",
         attempt: 0,
         name: "BlobPreconditionFailedError",
-        message: "Precondition failed: ETag mismatch."
+        message: "Vercel Blob: Precondition failed: ETag mismatch."
       });
     } finally {
       spy.mockRestore();

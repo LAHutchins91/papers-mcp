@@ -168,8 +168,14 @@ export function handleRouteError(error: unknown, req: Request, res: Response, _n
   const message = error instanceof Error ? error.message.slice(0, 300) : "";
   console.error(JSON.stringify({ event: "route_error", method: req.method, path: req.path, name, message }));
   if (res.headersSent) return;
-  if (tooLarge) return res.status(413).json({ error: "Request is too large." });
-  if (badBody) return res.status(400).json({ error: "Invalid request." });
+  if (tooLarge) {
+    res.status(413).json({ error: "Request is too large." });
+    return;
+  }
+  if (badBody) {
+    res.status(400).json({ error: "Invalid request." });
+    return;
+  }
   res.status(500).json({ error: "Something went wrong. Try again in a moment." });
 }
 
