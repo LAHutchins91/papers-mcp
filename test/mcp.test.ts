@@ -187,6 +187,27 @@ describe("Papers over Streamable HTTP", () => {
     expect(resource.authorization_servers).toEqual([base]);
   });
 
+
+  it("serves the OpenAI apps challenge from OPENAI_APPS_CHALLENGE", async () => {
+    const previous = process.env.OPENAI_APPS_CHALLENGE;
+    delete process.env.OPENAI_APPS_CHALLENGE;
+    try {
+      const missing = await fetch(`${base}/.well-known/openai-apps-challenge`);
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("content-type")).toMatch(/text\/plain/);
+      expect(await missing.text()).toBe("Verification is not configured.");
+
+      process.env.OPENAI_APPS_CHALLENGE = "challenge-token-value";
+      const present = await fetch(`${base}/.well-known/openai-apps-challenge`);
+      expect(present.status).toBe(200);
+      expect(present.headers.get("content-type")).toMatch(/text\/plain/);
+      expect(await present.text()).toBe("challenge-token-value");
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_APPS_CHALLENGE;
+      else process.env.OPENAI_APPS_CHALLENGE = previous;
+    }
+  });
+
   it("rejects a non-loopback http redirect and a tool call without a token", async () => {
     const rejected = await fetch(`${base}/register`, {
       method: "POST",
