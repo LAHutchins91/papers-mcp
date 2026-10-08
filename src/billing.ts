@@ -165,6 +165,7 @@ export async function createCheckout(userId: string, plan: "monthly" | "yearly",
   const price = plan === "yearly" ? process.env.STRIPE_PRICE_YEARLY ?? "" : process.env.STRIPE_PRICE_MONTHLY ?? "";
   const params = new URLSearchParams();
   params.set("mode", "subscription");
+  params.set("automatic_tax[enabled]", "true");
   params.set("line_items[0][price]", price);
   params.set("line_items[0][quantity]", "1");
   params.set("client_reference_id", userId);
@@ -175,7 +176,10 @@ export async function createCheckout(userId: string, plan: "monthly" | "yearly",
   params.set("success_url", `${base}/account?checkout=success`);
   params.set("cancel_url", `${base}/account?checkout=cancelled`);
   const existing = await getStore().get(userId);
-  if (existing?.stripeCustomerId) params.set("customer", existing.stripeCustomerId);
+  if (existing?.stripeCustomerId) {
+    params.set("customer", existing.stripeCustomerId);
+    params.set("customer_update[address]", "auto");
+  }
   const session = await stripeRequest("checkout/sessions", "POST", params);
   const url = asString(session.url);
   if (!url) throw new Error("Checkout did not return a URL");
