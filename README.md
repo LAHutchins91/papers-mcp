@@ -1,20 +1,21 @@
-# Papers by Ouroboros Apps
+# Papers by Ouroboros
 
-Papers by Ouroboros Apps is a remote MCP server for students, researchers, writers, and clinicians who want an assistant to search and cite real papers. It is a lighter, independent alternative to Consensus, SciSpace, and Elicit.
+Papers by Ouroboros is a remote MCP server for students, researchers, writers, and clinicians who want an assistant to search and cite real papers. It is a lighter, independent alternative to Consensus, SciSpace, and Elicit.
 
 The assistant can search OpenAlex, Semantic Scholar, PubMed, Crossref, and arXiv, open a paper by DOI, PMID, or arXiv id, see what cites a paper or what that paper cites, and format APA, MLA, Chicago, or BibTeX. Every result includes a source link and an identifier that came back from one of those APIs. If an API returns nothing, Papers returns nothing. It does not fill gaps with invented citations.
 
-- MCP endpoint: `https://<your-host>/mcp`
 - Works with ChatGPT, Claude, Gemini, Grok, Cursor, and any client that speaks Streamable HTTP plus OAuth 2.1 (dynamic client registration and PKCE)
-
-`server.json` is the MCP Registry manifest (`io.github.LAHutchins91/papers`). Its `remotes[0].url` is a placeholder (`https://papers-mcp.vercel.app/mcp`). Change it to the origin you actually deploy, and set `APP_BASE_URL` to that same origin.
 
 ## Hosted server
 
-- MCP server URL: `https://papers-mcp.vercel.app/mcp` (Streamable HTTP, OAuth sign-in)
+- MCP server URL: `https://papers-mcp.vercel.app/mcp` (live, Streamable HTTP, OAuth sign-in)
+- Health: https://papers-mcp.vercel.app/health
+- Protected-resource metadata: https://papers-mcp.vercel.app/.well-known/oauth-protected-resource
+- Connect guide: https://papers-mcp.vercel.app/connect
 - Docs: https://ouroborosapps.com/docs/papers
-- Status: early access. Paste the URL into Claude, Cursor, Grok, or ChatGPT developer mode.
-- Registry name: `io.github.LAHutchins91/papers`
+- Registry name: `io.github.LAHutchins91/papers` (`server.json` points `remotes[0].url` at the hosted URL above)
+
+If you self-host, the MCP endpoint is `https://<your-host>/mcp`. Set `APP_BASE_URL` to that origin and change `remotes[0].url` in your copy of `server.json`.
 
 ## Connect
 
@@ -26,7 +27,7 @@ Cursor, in `~/.cursor/mcp.json` or a project `.cursor/mcp.json`:
 {
   "mcpServers": {
     "papers": {
-      "url": "https://<your-host>/mcp"
+      "url": "https://papers-mcp.vercel.app/mcp"
     }
   }
 }
@@ -35,7 +36,7 @@ Cursor, in `~/.cursor/mcp.json` or a project `.cursor/mcp.json`:
 Claude Code:
 
 ```bash
-claude mcp add --transport http papers https://<your-host>/mcp
+claude mcp add --transport http papers https://papers-mcp.vercel.app/mcp
 ```
 
 Other clients: add the same URL and choose OAuth. The consent screen names the assistant and the `papers` scope. Tool discovery (`initialize`, `tools/list`, `ping`) does not require a token. Calling a tool does.
@@ -48,6 +49,20 @@ Other clients: add the same URL and choose OAuth. The consent screen names the a
 - `format_citation` — `apa`, `mla`, `chicago`, or `bibtex` from the fetched metadata
 
 Titles are kept as the source wrote them. Author names are split from display names, so particles such as “van” can land in the wrong part and deserve a look before you publish the citation.
+
+## Permissions, data, and limits
+
+**OAuth scope.** One scope, `papers`. The consent screen names the assistant and that scope. It grants tool calls on this server only. It gives no access to any other account, file, or service.
+
+**Operations.** All four tools are read-only lookups against public scholarly APIs (`readOnlyHint: true`, `destructiveHint: false`). There are no write or delete operations. Papers does not create, change, or remove anything on your behalf, outside the server, or in the scholarly sources.
+
+**Confirmations.** Because nothing is written or deleted, no tool asks for a confirmation step. The only confirmations are the OAuth consent screen when you connect and Stripe Checkout when you start a trial.
+
+**Storage, retention, and privacy.** Papers does not keep a log or history of queries. A search or identifier goes to the scholarly source that answers it and is not retained after the response. Papers stores a random account id (cookie 90 days, access token 1 hour, refresh token 30 days), single-use authorization code ids until they expire (5 minutes), and, after you start a trial, a subscription snapshot (account id, Stripe customer id, subscription id, status, period end, plan interval). Rate-limit counters are held in memory for about one to ten minutes. Connecting does not ask for your name or email. Export or deletion requests go to ouroborosplugins@gmail.com. Full policy: https://papers-mcp.vercel.app/privacy
+
+**Free limits.** Tool discovery (`initialize`, `tools/list`, `ping`) is open. Tool calls need a 14-day trial started through Stripe Checkout, then a Pro subscription. Stripe shows the amount; this repository does not list one. Each client IP is limited to 300 MCP requests per minute. The upstream APIs also apply their own rate limits (see Rate limits below).
+
+**How it is used.** A typical session: the user asks a research question, the assistant calls `search_papers`, opens one or two results with `get_paper`, follows `find_related_papers` to see what cites them, and finishes with `format_citation` in the style the user needs. Every record in the answer links back to the source that returned it.
 
 ## Trial and billing
 
@@ -184,4 +199,4 @@ process.stdout.write(crypto.createHash("sha256").update(`papers-reviewer\0${emai
 
 After sign-in, the tools return live records. A reviewer can call `search_papers` with a short query, then `get_paper`, `find_related_papers`, and `format_citation` with DOI `10.1038/nature14539`.
 
-More from Ouroboros: https://ouroborosapps.com
+Papers by Ouroboros. More from Ouroboros: https://ouroborosapps.com
