@@ -296,6 +296,7 @@ describe("Papers over Streamable HTTP", () => {
 
   it("accepts a signed webhook and refuses checkout when Stripe is unset", async () => {
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_http";
+    process.env.STRIPE_PRICE_MONTHLY = "price_http_month";
     const payload = JSON.stringify({
       type: "customer.subscription.updated",
       data: {
@@ -305,7 +306,7 @@ describe("Papers over Streamable HTTP", () => {
           status: "trialing",
           metadata: { papers_user_id: "user-http-1234" },
           current_period_end: Math.floor(Date.now() / 1000) + 3600,
-          items: { data: [] }
+          items: { data: [{ price: { id: "price_http_month" } }] }
         }
       }
     });
@@ -318,6 +319,7 @@ describe("Papers over Streamable HTTP", () => {
     });
     expect(response.status).toBe(200);
     expect((await getStore().get("user-http-1234"))?.subscriptionStatus).toBe("trialing");
+    delete process.env.STRIPE_PRICE_MONTHLY;
     const checkout = await fetch(`${base}/billing/checkout`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

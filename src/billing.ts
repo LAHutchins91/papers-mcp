@@ -77,20 +77,52 @@ export function recordFromSubscription(userId: string, object: Record<string, un
   };
 }
 
-function userIdOf(object: Record<string, unknown>): string | null {
-  const metadata = object.metadata;
-  if (metadata && typeof metadata === "object") {
-    const fromMeta = asString((metadata as { papers_user_id?: unknown }).papers_user_id);
-    if (fromMeta) return fromMeta;
-  }
-  return asString(object.client_reference_id);
+/** Stamped on every Papers checkout session and subscription. The Stripe account is shared with other apps. */
+export const PAPERS_APP = "papers";
+
+function metadataOf(object: Record<string, unknown>): Record<string, unknown> {
+  return object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
 }
 
-export async function applyStripeEvent(event: { type: string; data: { object: Record<string, unknown> } }): Promise<void> {
+function papersPrices(): string[] {
+  return [process.env.STRIPE_PRICE_MONTHLY?.trim() ?? "", process.env.STRIPE_PRICE_YEARLY?.trim() ?? ""].filter(Boolean);
+}
+
+/** Every price id on a subscription (items.data[].price as a string or an object). */
+export function subscriptionPriceIds(object: Record<string, unknown>): string[] {
+  const items = object.items && typeof object.items === "object" ? object.items as { data?: unknown } : {};
+  const data = Array.isArray(items.data) ? items.data : [];
+  return data.map((item) => {
+    const price = item && typeof item === "object" ? (item as { price?: unknown }).price : undefined;
+    if (typeof price === "string") return price;
+    if (price && typeof price === "object") return asString((price as { id?: unknown }).id) ?? "";
+    return "";
+  });
+}
+
+/** True only when every item on the subscription is a Papers price. */
+export function isPapersSubscription(object: Record<string, unknown>): boolean {
+  const allowed = papersPrices();
+  const prices = subscriptionPriceIds(object);
+  return allowed.length > 0 && prices.length > 0 && prices.every((price) => allowed.includes(price));
+}
+
+/** The Papers user named by our own metadata key. client_reference_id alone is never trusted. */
+function papersUserIdOf(object: Record<string, unknown>): string | null {
+  return asString(metadataOf(object).papers_user_id);
+}
+
+/**
+ * Every app on the shared Stripe account receives every event, so anything not provably Papers' is ignored:
+ * checkout needs metadata.app=papers and papers_user_id, and the subscription it created must carry only Papers prices;
+ * subscription events need only Papers prices plus papers_user_id.
+ */
+export async function applyStripeEvent(event: { type: string; data: { object: Record<string, unknown> } }): Promise<"applied" | "ignored"> {
   const object = event.data.object;
   if (event.type === "checkout.session.completed") {
-    const userId = userIdOf(object);
-    if (!userId) return;
+    if (metadataOf(object).app !== PAPERS_APP) return "ignored";
+    const userId = papersUserIdOf(object);
+    if (!userId) return "ignored";
     const customerId = asString(object.customer);
     const subscriptionId = asString(object.subscription);
     let record: SubscriptionRecord = {
@@ -105,19 +137,23 @@ export async function applyStripeEvent(event: { type: string; data: { object: Re
     if (subscriptionId && process.env.STRIPE_SECRET_KEY) {
       try {
         const subscription = await stripeRequest(`subscriptions/${subscriptionId}`, "GET");
+        if (!isPapersSubscription(subscription)) return "ignored";
         record = recordFromSubscription(userId, subscription, customerId);
       } catch (error) {
         console.error("Stripe subscription lookup failed");
       }
     }
     await getStore().save(record);
-    return;
+    return "applied";
   }
   if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
-    const userId = userIdOf(object);
-    if (!userId) return;
+    if (!isPapersSubscription(object)) return "ignored";
+    const userId = papersUserIdOf(object);
+    if (!userId) return "ignored";
     await getStore().save(recordFromSubscription(userId, object));
+    return "applied";
   }
+  return "ignored";
 }
 
 function subscriptionActive(record: SubscriptionRecord | null): boolean {
@@ -139,7 +175,10 @@ export async function lookupStripe(userId: string): Promise<SubscriptionRecord |
   }
   if (!customerId) return stored;
   const subs = await stripeRequest(`subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=5`, "GET");
-  const rows = Array.isArray(subs.data) ? subs.data.filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null) : [];
+  // Only Papers subscriptions count, even if this customer ever held another app's subscription.
+  const rows = Array.isArray(subs.data)
+    ? subs.data.filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null && isPapersSubscription(row as Record<string, unknown>))
+    : [];
   const preferred = rows.find((row) => row.status === "active") ?? rows.find((row) => row.status === "trialing") ?? rows[0];
   if (!preferred) {
     return stored ? { ...stored, stripeCustomerId: customerId, updatedAt: new Date().toISOString() } : null;
@@ -171,7 +210,9 @@ export async function createCheckout(userId: string, plan: "monthly" | "yearly",
   params.set("line_items[0][price]", price);
   params.set("line_items[0][quantity]", "1");
   params.set("client_reference_id", userId);
+  params.set("metadata[app]", PAPERS_APP);
   params.set("metadata[papers_user_id]", userId);
+  params.set("subscription_data[metadata][app]", PAPERS_APP);
   params.set("subscription_data[metadata][papers_user_id]", userId);
   params.set("subscription_data[trial_period_days]", String(TRIAL_DAYS));
   params.set("payment_method_collection", "always");
